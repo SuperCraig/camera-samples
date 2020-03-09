@@ -18,26 +18,13 @@ package com.example.android.camera2.basic.fragments
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.ContextWrapper
 import android.graphics.ImageFormat
-import android.hardware.camera2.CameraCaptureSession
-import android.hardware.camera2.CameraCharacteristics
-import android.hardware.camera2.CameraDevice
-import android.hardware.camera2.CameraManager
-import android.hardware.camera2.CaptureRequest
-import android.hardware.camera2.CaptureResult
-import android.hardware.camera2.DngCreator
-import android.hardware.camera2.TotalCaptureResult
+import android.hardware.camera2.*
 import android.media.Image
 import android.media.ImageReader
 import android.os.*
 import android.util.Log
-import android.view.LayoutInflater
-import android.view.Surface
-import android.view.SurfaceHolder
-import android.view.SurfaceView
-import android.view.View
-import android.view.ViewGroup
+import android.view.*
 import androidx.exifinterface.media.ExifInterface
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Observer
@@ -45,21 +32,22 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.Navigation
 import androidx.navigation.fragment.navArgs
-import com.example.android.camera2.common.computeExifOrientation
-import com.example.android.camera2.common.getPreviewOutputSize
+import com.example.android.camera2.basic.R
 import com.example.android.camera2.common.AutoFitSurfaceView
 import com.example.android.camera2.common.OrientationLiveData
-import com.example.android.camera2.basic.R
+import com.example.android.camera2.common.computeExifOrientation
+import com.example.android.camera2.common.getPreviewOutputSize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
-import java.io.*
+import java.io.Closeable
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
 import java.text.SimpleDateFormat
+import java.util.*
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeoutException
-import java.util.Date
-import java.util.Locale
-import kotlin.RuntimeException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
@@ -149,8 +137,8 @@ class CameraFragment : Fragment() {
 
         // Used to rotate the output media to match device orientation
         relativeOrientation = OrientationLiveData(requireContext(), characteristics).apply {
-            observe(this@CameraFragment, Observer {
-                orientation -> Log.d(TAG, "Orientation changed: $orientation")
+            observe(this@CameraFragment, Observer { orientation ->
+                Log.d(TAG, "Orientation changed: $orientation")
             })
         }
     }
@@ -168,7 +156,7 @@ class CameraFragment : Fragment() {
 
         // Initialize an image reader which will be used to capture still photos
         val size = characteristics.get(
-                CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
+                        CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
                 .getOutputSizes(args.pixelFormat).maxBy { it.height * it.width }!!
         imageReader = ImageReader.newInstance(
                 size.width, size.height, args.pixelFormat, IMAGE_BUFFER_SIZE)
@@ -184,8 +172,8 @@ class CameraFragment : Fragment() {
 
         //captureRequest.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF)
         captureRequest.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
-        captureRequest.set(CaptureRequest.SENSOR_SENSITIVITY, 800)
-        captureRequest.set(CaptureRequest.SENSOR_EXPOSURE_TIME, 1000)
+        captureRequest.set(CaptureRequest.SENSOR_SENSITIVITY, 500)
+        captureRequest.set(CaptureRequest.SENSOR_EXPOSURE_TIME, 25000000)
 
         // This will keep sending the capture request as frequently as possible until the
         // session is torn down or session.stopRepeating() is called
@@ -246,7 +234,7 @@ class CameraFragment : Fragment() {
             }
 
             override fun onError(device: CameraDevice, error: Int) {
-                val msg = when(error) {
+                val msg = when (error) {
                     ERROR_CAMERA_DEVICE -> "Fatal (device)"
                     ERROR_CAMERA_DISABLED -> "Device policy"
                     ERROR_CAMERA_IN_USE -> "Camera in use"
@@ -273,7 +261,7 @@ class CameraFragment : Fragment() {
 
         // Create a capture session using the predefined targets; this also involves defining the
         // session state callback to be notified of when the session is ready
-        device.createCaptureSession(targets, object: CameraCaptureSession.StateCallback() {
+        device.createCaptureSession(targets, object : CameraCaptureSession.StateCallback() {
 
             override fun onConfigured(session: CameraCaptureSession) = cont.resume(session)
 
@@ -295,7 +283,8 @@ class CameraFragment : Fragment() {
 
         // Flush any images left in the image reader
         @Suppress("ControlFlowWithEmptyBody")
-        while (imageReader.acquireNextImage() != null) {}
+        while (imageReader.acquireNextImage() != null) {
+        }
 
         // Start a new image queue
         val imageQueue = ArrayBlockingQueue<Image>(IMAGE_BUFFER_SIZE)
@@ -308,15 +297,18 @@ class CameraFragment : Fragment() {
         val captureRequest = session.device.createCaptureRequest(
                 CameraDevice.TEMPLATE_STILL_CAPTURE).apply { addTarget(imageReader.surface) }
 
-        captureRequest.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF)
+        //captureRequest.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF)
         captureRequest.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
 
-        captureRequest.set(CaptureRequest.SENSOR_SENSITIVITY, 100)
-        captureRequest.set(CaptureRequest.SENSOR_EXPOSURE_TIME, 10000000)
+        captureRequest.set(CaptureRequest.SENSOR_SENSITIVITY, 500)
+        captureRequest.set(CaptureRequest.SENSOR_EXPOSURE_TIME, 25000000)
 
-        Log.d(TAG, "Aperture: " + captureRequest.get(CaptureRequest.LENS_APERTURE))
-        Log.d(TAG, "ISO: " + captureRequest.get(CaptureRequest.SENSOR_SENSITIVITY))
-        Log.d(TAG, "Exposure: " + captureRequest.get(CaptureRequest.SENSOR_EXPOSURE_TIME))
+        var apertures = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES)
+        for(aperture in apertures!!){
+            Log.i(TAG, "Available aperture: " + aperture)
+        }
+        Log.i(TAG, "ISO: " + characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE))
+        Log.i(TAG, "Exposure: " + characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE))
 
         session.capture(captureRequest.build(), object : CameraCaptureSession.CaptureCallback() {
             override fun onCaptureCompleted(
@@ -346,7 +338,7 @@ class CameraFragment : Fragment() {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
                                 image.format != ImageFormat.DEPTH_JPEG &&
                                 image.timestamp != resultTimestamp) continue
-                         Log.d(TAG, "Matching image dequeued: ${image.timestamp}")
+                        Log.d(TAG, "Matching image dequeued: ${image.timestamp}")
 
                         // Unset the image reader listener
                         imageReaderHandler.removeCallbacks(timeoutRunnable)
@@ -398,6 +390,17 @@ class CameraFragment : Fragment() {
                 try {
                     val output = createFile(requireContext(), "dng")
                     FileOutputStream(output).use { dngCreator.writeImage(it, result.image) }
+
+                    val byteBuffer = result.image.planes[0].buffer
+                    val byteArray = ByteArray(byteBuffer.remaining())
+                    byteBuffer.get(byteArray)
+
+                    var aver = average(byteArray)
+                    Log.i(TAG, "Image size: ${result.image.width} x ${result.image.height}")
+                    Log.i(TAG, "Buffer size: ${byteArray.size}")
+                    Log.i(TAG, "Buffer average: ${aver}")
+
+
                     cont.resume(output)
 
                 } catch (exc: IOException) {
@@ -413,6 +416,20 @@ class CameraFragment : Fragment() {
                 cont.resumeWithException(exc)
             }
         }
+    }
+
+    private fun average(byteArray: ByteArray): Double {
+        var sum: Double = 0.0
+        var count: Int = 0
+        for (element in byteArray) {
+            if(count % 2 == 0){
+                sum += element
+            }else{
+                sum += (element * 256)
+            }
+            ++count
+        }
+        return if (count == 0) Double.NaN else sum / (count/2)
     }
 
     override fun onStop() {
@@ -456,7 +473,7 @@ class CameraFragment : Fragment() {
          */
         private fun createFile(context: Context, extension: String): File {
             val sdf = SimpleDateFormat("yyyy_MM_dd_HH_mm_ss_SSS", Locale.US)
-            val path =  Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)
+            val path = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)
 
             Log.d(TAG, "File dir: " + path.toString())
 
